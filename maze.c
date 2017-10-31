@@ -19,7 +19,7 @@ So, when processing a cell to decide whether to connect to the adjacent cell:
 	if a is _already_ pointing to b, it must not connect it again; instead it must put a wall up. 
 	If they _aren't_ connected, it can randomly choose to do so. 
 That's exactly what the code does:
-	int adj = head[col - 1]; if ( (col != adj) && random() ) ....
+	int adj = prev[col - 1]; if ( (col != adj) && random() ) ....
 
 The next question is whether to connect down. If it is to do so, then the data structure is unchanged.
 However if it decides to _not_ connect down (ie there's a wall), then the cell on the next row is just
@@ -41,8 +41,9 @@ compliant maze.
 #include <stdlib.h>
 
 char opStr[3];
-int head[40];		// the left and right doubly linked lists. 
-int	tail[40];
+int	next[40];		// the left and right doubly linked lists. 
+int prev[40];
+
 
 int random(void) {	// done repeatedly so pull out as a function
 	// returns 0 around 6200 times out of 10000 (and 1 the remainder of the time)
@@ -61,16 +62,20 @@ void dump(void) {
 	printf("\n");
 	
 	for (int i=40; --i;) {
-		printf("%2i ", head[i]);
+		printf("%2i ", next[i]);
 	}
 	printf("\n");
 	
 	for (int i=40; --i;) {
-		printf("%2i ", tail[i]);
+		printf("%2i ", prev[i]);
 	}
 	printf("\n");
+}
 
-}	
+void join(int a, int b) {
+	next[a] = b;
+	prev[b] = a;
+}
 	
 
 int main(int argc, char **argv){
@@ -90,9 +95,9 @@ int main(int argc, char **argv){
 	
 	for(int i = 40; --i; ) {
 		printf("._");
-		head[i] = tail[i] = i;
+		join(i, i);
 	}
-	head[0] = 1;	// dummy cell. ensures last cell doesn't try to connect to the right
+	prev[0] = 1;	// dummy cell. ensures last cell doesn't try to connect to the right
 	
 	// unroll the Z loops; start in the main loop, then expand the loop for the last line
 	// There's a bunch of tests for the last line; extract line line processing into a separate loop
@@ -102,40 +107,24 @@ int main(int argc, char **argv){
 		printf("\n|");
 		for (int col = 39; col > 0; col--) {
 			
-			int adj = head[col-1];
+			int adj = prev[col-1];		// col-1 is the cell imediately to the right of the current cell.
 			if ( (col != adj) && random() ) {
 				// the cell isn't already pointing to the adjacent cell, so can randomly leave a wall out.
-				// join the 2x linked-lists. 4 links need changing - on 4 separate nodes.
-				// Call the 2x linked-lists A and B.
-				// Since the linked-list is circular we can choose where to break & rejoin them. The following
-				// puts the cell at [col-1] at the very end of the linked-list (wrt to [col]).
-				tail[adj] = tail[col];		// B: join the tail-ptr of head the second queue to the end of the first queue
-				head[tail[col]] = adj;		// A: join the tail-ptr of the tail of the 1st queue to the beginning of the 2nd queue
-				tail[col] = col-1;			// A: put [col-1] at the end of the list
-				head[col-1] = col;			// B: update the entry at [col-1] so it's head points to the front.
+				// join the 2x linked-lists. 
+				join(adj, next[col]);
+				join(col, col-1);
 				
 				opStr[1]='.';
 			} else {
 				opStr[1]='|';
 			}
 			
-			int down = head[col];
+			int down = prev[col];
 			if ( (col != down) && random() ) {
 				// the cell isn't pointing to itself (and therefore isolated); can randomly put a horizonal wall in.
-				//if (++debugCount < 5) {
-				//	printf("col = %i, down = %i\n", col, down);
-				//	dump();
-				//}
-				// separate the head from the remainder of the linked-list. The remainder starts at down.
-				tail[down] = tail[col];	// down becomes the new head; it's tail now points to where the old head pointed.
-				head[tail[col]] = down;	// the tail entry's head now points to the new head.
-				tail[col] = col;			// make the head point to itself.
-				head[col] = col;
-				
-				//if (debugCount < 5) {
-				//	printf("\nAfter:\n");
-				//	dump();
-				//}
+				// separate the prev from the remainder of the linked-list. The remainder starts at down.
+				join(down, next[col]);
+				join(col, col);				// make the cell to itself.
 				opStr[0] = '_';
 			} else {
 				opStr[0] = ' ';
@@ -148,29 +137,25 @@ int main(int argc, char **argv){
 	opStr[0]='_';	// lifted this out of the loop
 	for (int col = 39; col > 0; col--) {		// last line processing
 			
-		int adj = head[col-1];
-		if ( (col != adj) && (  (col == tail[col]) | random() )  ) {
-			// differs from every other line's processing by addition of (col == tail[col]) 
+		int adj = prev[col-1];
+		if ( (col != adj) && (  (col == next[col]) | random() )  ) {
+			// differs from every other line's processing by addition of (col == next[col]) 
 			// this says the cell points to itself. So this check is to ensure the cell
 			// is connected to the right by leaving the wall out.
-			tail[adj] = tail[col];
-			head[tail[col]] = adj;
-			tail[col] = col-1;
-			head[col-1] = col;
+			join(adj, next[col]);
+			join(col, col-1);
 			opStr[1] = '.';
 		} else {
 			opStr[1] = '|';
 		}
 		
-		int down = head[col];
+		int down = prev[col];
 		// could remove this "if" as it always succeeds. However it screws up the rand seq
 		// & therefore gives different (valid) results. Therefore leave for the moment...
 		// There must always be a wall inserted, hence this if always succeeding.
-		if ( (  (col != down) && (  (col == tail[col]) | random() )  ) || 1) {
-			tail[down] = tail[col];
-			head[tail[col]] = down;
-			tail[col] = col;
-			head[col] = col;
+		if ( (  (col != down) && (  (col == next[col]) | random() )  ) || 1) {
+			join(down, next[col]);
+			join(col, col);
 			
 		} // else never executes 
 		
